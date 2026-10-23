@@ -5,6 +5,10 @@ time entries. It's designed to be driven by an AI agent through the bundled
 skill (`skills/timecamp/SKILL.md`), and has an interactive week editor for
 humans.
 
+
+<img width="846" height="982" alt="image" src="https://github.com/user-attachments/assets/6fe3ded5-379c-46ca-8302-c4701491c30c" />
+
+
 ## Setup
 
 Install it globally with npm (no registry or publish needed):
