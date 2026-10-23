@@ -58,6 +58,27 @@ In the form, Enter on **Epic** opens a search over all tasks (epics are listed
 before stories), and Enter on **Tags** opens a multi-select labelled CAPEX or
 OPEX. Ctrl-S saves. The TUI never submits a timesheet for approval.
 
+### Mouse
+
+The mouse is on by default:
+
+| Gesture | Effect |
+|---|---|
+| Click | Select a row; press header, footer and form buttons (`‹ h`, `l ›`, `a add`, `[ Create entry ]`, `[ y: yes ]` …); focus a form field (Epic and Tags open their pickers); toggle a tag |
+| Double-click | On a day: add an entry. On an entry: edit it. In the epic picker: pick. |
+| Wheel | Move the selection |
+| Drag | Select text anywhere on screen. On release it's copied to the clipboard (shown in the status line). |
+
+Copying uses OSC 52, which Windows Terminal, iTerm2, kitty, WezTerm and most
+modern terminals support. Under tmux, enable `set -g set-clipboard on`. If your
+terminal doesn't support it, add a clipboard command to the config, e.g.
+`"clipboardCommand": ["powershell.exe", "-noprofile", "-command", "$input | Set-Clipboard"]`
+on WSL, or `["wl-copy"]` / `["xclip", "-selection", "clipboard"]` on Linux.
+Shift-drag still gives you your terminal's own selection.
+
+To turn the mouse off, run `timecamp tui --no-mouse` or set `"mouse": false` in
+the config.
+
 ## CLI
 
 ```bash
@@ -77,7 +98,8 @@ The full task list is cached for 24h in `~/.cache/timecamp/`. Pass
 need a token or network access.
 
 The code is split into `lib/core.mjs` (API client and entry logic), `bin/timecamp.mjs`
-(CLI) and `lib/tui.mjs` (TUI).
+(CLI), `lib/tui.mjs` (TUI) and `lib/mouse.mjs` (mouse parsing, click-vs-drag
+detection, text selection).
 
 Environment overrides: `TIMECAMP_BASE_URL`, `TIMECAMP_API_TOKEN_FILE`,
 `TIMECAMP_CONFIG`, `TIMECAMP_CACHE_DIR`.

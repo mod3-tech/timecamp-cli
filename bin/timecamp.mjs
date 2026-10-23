@@ -18,7 +18,7 @@ Auth:
   (TIMECAMP_API_TOKEN, if set, overrides the saved token)
 
 Interactive:
-  tui [--week D]                       Full-screen week editor (press ? inside for keys)
+  tui [--week D] [--no-mouse]          Full-screen week editor (press ? inside for keys)
 
 Read:
   me                                   Show the authenticated user
@@ -52,7 +52,7 @@ Config: ${CONFIG_FILE} (CAPEX/OPEX tag lists, day start/length)
 
 // ---------- arg parsing ----------
 
-const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh"]);
+const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse"]);
 
 function looksLikeDate(s) {
   return /^(\d{4}-\d{2}-\d{2}|today|yesterday|tomorrow|[+-]\d+)$/.test(s);
@@ -335,7 +335,7 @@ const commands = {
 
   async tui(_pos, opts) {
     const { runTui } = await import("../lib/tui.mjs");
-    await runTui({ week: opts.week === true ? undefined : opts.week, refresh: opts.refresh });
+    await runTui({ week: opts.week === true ? undefined : opts.week, refresh: opts.refresh, mouse: opts["no-mouse"] ? false : undefined });
   },
 
   help() { process.stdout.write(HELP); },
