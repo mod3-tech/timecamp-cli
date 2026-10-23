@@ -5,9 +5,9 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { writeFileSync, mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 const run = promisify(execFile);
 const CLI = fileURLToPath(new URL("../bin/timecamp.mjs", import.meta.url));
@@ -46,7 +46,17 @@ before(async () => {
     const p = url.pathname.replace(/^\/api/, "");
     if (p === "/me") return send(200, { user_id: "7", email: "me@example.com", display_name: "Me", root_group_id: "1" });
     if (p === "/tasks") return send(200, tasks);
-    if (p === "/tag_list") return send(200, { 3: { id: "3", name: "Type", archived: "0", tags: { 21: { id: "21", name: "Meeting", archived: "0" } } } });
+    if (p === "/tag_list") return send(200, {
+      3: { id: "3", name: "Type", archived: "0", tags: { 21: { id: "21", name: "Meeting", archived: "0" } } },
+      54149: { id: "54149", name: "Design & Development", archived: "0", tags: { 138495: { id: "138495", name: "Developing API's", archived: "0" } } },
+      54150: { id: "54150", name: "Testing", archived: "0", tags: { 138488: { id: "138488", name: "Test Automation / Execution", archived: "0" } } },
+      54156: { id: "54156", name: "Project Management Design & Development Phase", archived: "0", tags: {} },
+      54157: { id: "54157", name: "Implementation Work not yet in Production", archived: "0", tags: {} },
+      54158: { id: "54158", name: "Pre Approval and Pre Design & Development", archived: "0", tags: {} },
+      54159: { id: "54159", name: "Implementation & Software Maintenance", archived: "0", tags: { 140851: { id: "140851", name: "Bug Fixes (post production)", archived: "0" } } },
+      54842: { id: "54842", name: "Administrative Tasks (Non-Capex)", archived: "0", tags: { 140850: { id: "140850", name: "Administrative Tasks (Non-Capex)", archived: "0" } } },
+      999: { id: "999", name: "Marketing", archived: "0", tags: {} },
+    });
     if (p === "/entries" && req.method === "GET") {
       const { from, to } = Object.fromEntries(url.searchParams);
       return send(200, entries.filter((e) => e.date >= from && e.date <= to));
@@ -76,11 +86,15 @@ before(async () => {
 
 after(() => server.close());
 
-async function cli(args, { input, token = "test-token" } = {}) {
+async function cli(args, { input, token = "test-token", config = CONFIG, tokenFile = "/nonexistent" } = {}) {
   const env = {
-    ...process.env, TIMECAMP_BASE_URL: baseUrl, TIMECAMP_API_TOKEN: token, TIMECAMP_API_TOKEN_FILE: "/nonexistent",
-    TIMECAMP_CACHE_DIR: mkdtempSync(join(tmpdir(), "tc-cache-")), TIMECAMP_CONFIG: CONFIG,
+    ...process.env, TIMECAMP_BASE_URL: baseUrl, TIMECAMP_API_TOKEN_TOKEN_PLACEHOLDER: "",
+    TIMECAMP_API_TOKEN_FILE: tokenFile,
+    TIMECAMP_CACHE_DIR: mkdtempSync(join(tmpdir(), "tc-cache-")), TIMECAMP_CONFIG: config,
   };
+  delete env.TIMECAMP_API_TOKEN_TOKEN_PLACEHOLDER;
+  delete env.TIMECAMP_API_TOKEN;
+  if (token !== null) env.TIMECAMP_API_TOKEN = token;
   try {
     const p = run(process.execPath, [CLI, ...args], { env });
     if (input !== undefined) { p.child.stdin.end(input); }
@@ -244,4 +258,58 @@ test("login verifies a piped token, saves it 0600, and logout removes it", async
   const out = await run(process.execPath, [CLI, "logout"], { env });
   assert.match(out.stdout, /Removed/);
   assert.ok(!existsSync(tokenFile));
+});
+
+const freshConfig = () => join(mkdtempSync(join(tmpdir(), "tc-setup-")), "nested", "config.json");
+
+test("setup derives CAPEX/OPEX tag lists from list names and writes the config", async () => {
+  const config = freshConfig();
+  const r = await cli(["setup"], { config });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /Logged in as Me <me@example.com>/);
+  assert.match(r.stdout, new RegExp(config.replace(/[.^$*+?()[\]{}|\\]/g, "\\$&")));
+  assert.match(r.stdout, /Not classified: .*Marketing \(999\)/);
+  assert.match(r.stdout, /ln -s .*skills\/timecamp/);
+
+  const cfg = JSON.parse(readFileSync(config, "utf8"));
+  assert.deepEqual(cfg.classification, { capex: [54149, 54150, 54156, 54157], opex: [54158, 54159, 54842] });
+  assert.equal(statSync(config).mode & 0o777, 0o644);
+
+  // and the classification is immediately usable
+  const s = await cli(["tags", "--search", "Bug Fixes", "--json"], { config });
+  assert.equal(JSON.parse(s.stdout)[0].class, "OPEX");
+});
+
+test("setup keeps an existing classification unless --force, and preserves other settings", async () => {
+  const config = freshConfig();
+  mkdirSync(dirname(config), { recursive: true });
+  writeFileSync(config, JSON.stringify({ classification: { capex: [1], opex: [2] }, dayHours: 6, mouse: false }));
+  let r = await cli(["setup"], { config });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /Kept the existing classification/);
+  assert.deepEqual(JSON.parse(readFileSync(config, "utf8")), { classification: { capex: [1], opex: [2] }, dayHours: 6, mouse: false });
+
+  r = await cli(["setup", "--force"], { config });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(config, "utf8")).classification, { capex: [54149, 54150, 54156, 54157], opex: [54158, 54159, 54842] });
+  assert.equal(JSON.parse(readFileSync(config, "utf8")).dayHours, 6, "other settings are preserved");
+});
+
+test("setup --json is machine-readable", async () => {
+  const config = freshConfig();
+  const r = await cli(["setup", "--json"], { config });
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.user.user_id, "7");
+  assert.equal(out.wroteConfig, true);
+  assert.ok(out.unclassified.some((l) => l.name === "Marketing" && l.id === 999));
+});
+
+test("setup fails clearly without a usable token when it can't prompt", async () => {
+  let r = await cli(["setup"], { config: freshConfig(), token: null });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /No API token\. Run `timecamp login`/);
+
+  r = await cli(["setup"], { config: freshConfig(), token: "bad" });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /TIMECAMP_API_TOKEN is set but rejected/);
 });

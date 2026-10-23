@@ -13,15 +13,16 @@ reads and writes **the user's own** entries.
 ## Setup
 
 ```bash
-timecamp login     # user runs this: paste token (hidden) → verified → saved to ~/.config/timecamp/token (0600)
-timecamp me        # sanity check: prints name/email/user_id
+npm install -g .        # one-time, from the clone; then:
+timecamp setup          # user's job: logs in, writes the CAPEX/OPEX config
+timecamp me             # sanity check: prints name/email/user_id
 ```
 
-Never print, echo, or commit the token, and never run `login` with a token
-yourself. If a command fails with a 401 or "No API token", ask the user to run
-`timecamp login` in their own terminal (in OpenCode they can prefix it with
-`!`). Don't ask them to paste the token into the chat. `TIMECAMP_API_TOKEN`,
-if set, overrides the saved token.
+If a command fails with a 401 or "No API token", ask the user to run
+`timecamp login` (or `timecamp setup`) in their own terminal. In OpenCode they
+can prefix it with `!`. Never run `login` yourself and never ask the user to
+paste the token into the chat. `TIMECAMP_API_TOKEN`, if set, overrides the
+saved token.
 
 `~/.config/timecamp/config.json` maps tag lists to CAPEX/OPEX and sets the
 working day. With it in place, `entries`, `summary`, `tags` and the TUI show a
@@ -45,6 +46,7 @@ review or tweak a week by hand.
 | Command | Purpose |
 |---|---|
 | `login` / `logout` | **User-only.** Save (after verifying) or remove the API token. |
+| `setup` | **User-only.** First-run setup: login + CAPEX/OPEX config. Safe to re-run. |
 | `me` | Who the token belongs to. |
 | `tasks [--search TEXT] [--archived]` | Projects and tasks you can track to, as `id` + full path (`Client / Project / Task`). |
 | `tags [--search TEXT]` | Tag ids, grouped by tag list. |

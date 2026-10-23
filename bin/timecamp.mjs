@@ -3,15 +3,27 @@
 // Zero dependencies; requires Node 18+ (global fetch). Run `timecamp help` for usage.
 
 import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   CliError, die, TOKEN_FILE, CONFIG_FILE, dateObj, fmtDate, resolveRange, fmtDuration, hours, toList,
-  api, me, setToken, saveToken, removeToken, loadTasks, resolveTask, loadTags, fetchEntries, buildEntryPayload, createEntry, updateEntry,
-  deleteEntry, classTotals, hasClassification,
+  api, me, setToken, saveToken, removeToken, hasToken, loadTasks, resolveTask, loadTags, fetchEntries, buildEntryPayload, createEntry, updateEntry,
+  deleteEntry, classTotals, hasClassification, loadConfig, saveConfig, deriveClassification, dayStart, dayHours, clockToSec, secToClock,
+  TASK_CACHE_FILE,
 } from "../lib/core.mjs";
+
+// ---------- output ----------
+
+const C_OK = "32";
+const C_WARN = "33";
+const C_DIM = "90";
+const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "skills", "timecamp");
 
 const HELP = `timecamp — TimeCamp time-entry CLI
 
 Auth:
+  setup [--force]                      First-run setup: log in if needed, derive the CAPEX/OPEX
+                                       config from your tag lists, check everything works
   login                                Paste your API token (hidden), verify it, save it to
                                        ${TOKEN_FILE}. Or pipe it: timecamp login < file
   logout                               Delete the saved token
@@ -52,7 +64,7 @@ Config: ${CONFIG_FILE} (CAPEX/OPEX tag lists, day start/length)
 
 // ---------- arg parsing ----------
 
-const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse"]);
+const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse", "force"]);
 
 function looksLikeDate(s) {
   return /^(\d{4}-\d{2}-\d{2}|today|yesterday|tomorrow|[+-]\d+)$/.test(s);
@@ -137,6 +149,69 @@ async function readHidden(prompt) {
 // ---------- commands ----------
 
 const commands = {
+  async setup(_pos, opts) {
+    const log = (mark, msg, style = "") => { if (!opts.json) console.log(`${mark} ${style ? `\x1b[${style}m${msg}\x1b[0m` : msg}`); };
+    const result = { user: null, configFile: CONFIG_FILE, classification: null, unclassified: [], wroteConfig: false };
+
+    if (!opts.json) console.log("TimeCamp setup\n");
+
+    // 1. Authentication
+    if (!hasToken()) {
+      if (!process.stdin.isTTY) die("No API token. Run `timecamp login` first, or set TIMECAMP_API_TOKEN.");
+      process.stderr.write("No API token found.\n");
+      await commands.login([], opts);
+    }
+    try {
+      result.user = await me();
+    } catch (e) {
+      if (process.env.TIMECAMP_API_TOKEN) die("TIMECAMP_API_TOKEN is set but rejected by TimeCamp. Fix or unset it, then re-run `timecamp setup`.");
+      if (!process.stdin.isTTY) throw e;
+      process.stderr.write("The saved token was rejected; logging in again.\n");
+      removeToken();
+      await commands.login([], opts);
+      result.user = await me();
+    }
+    log("✓", `Logged in as ${result.user.display_name} <${result.user.email}>`, C_OK);
+
+    // 2. CAPEX/OPEX classification from the account's tag lists
+    const lists = toList(await api("GET", "/tag_list"));
+    const derived = deriveClassification(lists);
+    result.unclassified = derived.unclassified;
+    const cfg = { ...loadConfig() };
+    if (cfg.classification && !opts.force) {
+      result.classification = cfg.classification;
+      log("·", `Kept the existing classification in ${CONFIG_FILE} (use --force to rebuild it).`, C_DIM);
+    } else if (derived.capex.length || derived.opex.length) {
+      result.classification = { capex: derived.capex.map((l) => l.id), opex: derived.opex.map((l) => l.id) };
+      cfg.classification = result.classification;
+      saveConfig(cfg);
+      result.wroteConfig = true;
+      log("✓", `Wrote ${CONFIG_FILE}`, C_OK);
+    } else {
+      log("!", "No known CAPEX/OPEX tag lists found; classification left unset. Add them to the config by hand.", C_WARN);
+    }
+    if (result.classification) {
+      log(" ", `CAPEX lists: ${derived.capex.map((l) => l.name).join(", ") || "(none matched)"}`, C_DIM);
+      log(" ", `OPEX lists:  ${derived.opex.map((l) => l.name).join(", ") || "(none matched)"}`, C_DIM);
+    }
+    if (derived.unclassified.length) {
+      log("!", `Not classified: ${derived.unclassified.map((l) => `${l.name} (${l.id})`).join(", ")}`, C_WARN);
+      log(" ", `Add them to "classification" in ${CONFIG_FILE} if they should count.`, C_DIM);
+    }
+
+    // 3. Day defaults / current settings
+    if (!opts.json) {
+      log(" ", `Working day: ${dayStart().slice(0, 5)}–${secToClock(clockToSec(dayStart()) + dayHours() * 3600).slice(0, 5)} (${dayHours()}h)`, C_DIM);
+      log(" ", `Task cache: ${TASK_CACHE_FILE} (built on first use, valid 24h)`, C_DIM);
+    }
+
+    if (opts.json) return print(result);
+    console.log("\nNext:");
+    console.log(`  agent skill (once):  ln -s ${SKILL_DIR} ~/.claude/skills/timecamp`);
+    console.log("  try it:              timecamp tui");
+    console.log("  checks:              timecamp me && timecamp summary --week");
+  },
+
   async login(pos, opts) {
     if (pos.length) die("Don't pass the token as an argument (it would end up in your shell history). Run `timecamp login` and paste it, or pipe it in: `timecamp login < file`.");
     let token;

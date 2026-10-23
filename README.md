@@ -7,17 +7,51 @@ humans.
 
 ## Setup
 
-1. Put it on your PATH: `ln -s "$PWD/bin/timecamp.mjs" ~/.local/bin/timecamp`
-2. Log in: `timecamp login`. Paste your API token from TimeCamp (avatar →
-   **Profile Settings** → *API token*, at the bottom of the page). Input is
-   hidden, the token is verified before it's saved, and it's stored in
-   `~/.config/timecamp/token` with mode 600. Non-interactive:
-   `timecamp login < tokenfile`. `timecamp logout` removes it.
+Install it globally with npm (no registry or publish needed):
+
+```bash
+git clone git@github.com:mod3-tech/timecamp-cli.git ~/programming/work/timesheet
+cd ~/programming/work/timesheet
+npm install -g .
+timecamp setup
+```
+
+`npm install -g .` links the `timecamp` command to your clone, so `git pull`
+updates it. Only re-install if `package.json` changes (`bin`, name); code
+changes need nothing. `npm link` does the same thing without recording a
+global install. To remove it: `npm uninstall -g timecamp-cli`.
+
+Install straight from git instead, without keeping a clone:
+
+```bash
+npm install -g git+https://github.com/mod3-tech/timecamp-cli.git
+```
+
+That copies the code, so re-run it to update.
+
+### First run
+
+```bash
+timecamp setup
+```
+
+It logs you in (hidden token prompt), works out which tag lists are CAPEX and
+which are OPEX from their names, writes `~/.config/timecamp/config.json`, and
+checks everything. It's safe to re-run; `--force` rebuilds the classification
+after your tag lists change.
+
+Doing it by hand is also fine:
+
+1. Get your API token: TimeCamp → avatar → **Profile Settings** → *API token*
+   (bottom of the page).
+2. Log in: `timecamp login`, or pipe it in: `timecamp login < tokenfile`.
+   The token is verified before it's saved to `~/.config/timecamp/token`
+   (mode 600). `timecamp logout` removes it.
    (`TIMECAMP_API_TOKEN`, if set, overrides the saved token.)
 3. Check it: `timecamp me`
-4. Optional but recommended: create `~/.config/timecamp/config.json` to
-   classify tag lists as CAPEX or OPEX and to set your working day. Find the
-   list ids with `timecamp tags`.
+4. Optional: create `~/.config/timecamp/config.json` to classify tag lists as
+   CAPEX or OPEX and to set your working day. Find the list ids with
+   `timecamp tags`. `timecamp setup` writes this for you.
 
    ```json
    {

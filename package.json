@@ -1,10 +1,20 @@
 {
   "name": "timecamp-cli",
-  "version": "0.1.0",
-  "description": "CLI for automating TimeCamp (app.timecamp.com) time entries, built for agents",
+  "version": "0.2.0",
+  "description": "CLI and TUI for automating TimeCamp (app.timecamp.com) time entries, built for agents",
   "type": "module",
   "bin": {
     "timecamp": "bin/timecamp.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "skills",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mod3-tech/timecamp-cli.git"
   },
   "scripts": {
     "test": "node --test test/"
