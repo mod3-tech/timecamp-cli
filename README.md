@@ -99,7 +99,9 @@ timecamp tui            # this week
 timecamp tui --week -7  # last week
 ```
 
-The TUI shows one week at a time: days with totals, a warning on days that are
+The default view is a week grid (epic+tags rows, day columns); `?` lists the keys, `v` toggles the list view. Submitted weeks are labelled and read-only.
+
+The list view shows one week at a time: days with totals, a warning on days that are
 short or empty, and every entry with its CAPEX/OPEX class, epic, tags and note.
 
 | Key | Action |
@@ -166,3 +168,8 @@ detection, text selection) and `lib/skills.mjs` (installing the bundled skill).
 
 Environment overrides: `TIMECAMP_BASE_URL`, `TIMECAMP_API_TOKEN_FILE`,
 `TIMECAMP_CONFIG`, `TIMECAMP_CACHE_DIR`.
+
+## TimeCamp API docs
+
+OpenAPI spec: <https://developer.timecamp.com/reference/dist/api-prod.yaml> (the docs site needs a JS browser).
+`GET /approval` status: 0 open, 1 approved, 2 pending, 3 rejected; no user filter.

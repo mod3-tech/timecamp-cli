@@ -16,7 +16,9 @@ writeFileSync(CONFIG, JSON.stringify({ classification: { capex: [3], opex: [4] }
 
 let server, baseUrl, requests, entries, nextId, flaky = 0;
 
+let approval = 0;
 function reset() {
+  approval = 0;
   requests = [];
   nextId = 1000;
   entries = [
@@ -79,6 +81,8 @@ before(async () => {
       if (req.method === "DELETE") e.tags = e.tags.filter((t) => !ids.includes(String(t.tagId)));
       return send(200, ids);
     }
+    if (p === "/approval" && approval === "fail") return send(403, { message: "no" });
+    if (p === "/approval") return send(200, [{ for: "7", from: "2026-10-19", status: String(approval) }, { for: "8", from: "2026-10-19", status: "1" }]);
     if (p === "/timer_running") return send(200, []);
     send(404, { message: "not found" });
   });
@@ -443,4 +447,80 @@ test("skills install --dry-run, --link and --global", async () => {
   r = await cli(["skills", "install", "--global", "--pi"], { cwd, home });
   assert.equal(r.code, 0, r.stderr);
   assert.ok(existsSync(join(home, ".pi/agent/skills/timecamp/SKILL.md")));
+});
+
+// Drives the TUI week grid headlessly (no TTY) against the fake API; prints the final state as JSON on stderr (stdout carries the screen redraws).
+async function grid(script) {
+  const code = `
+    import { App, WeekScreen } from ${JSON.stringify(new URL("../lib/tui.mjs", import.meta.url).href)};
+    import * as tc from ${JSON.stringify(new URL("../lib/core.mjs", import.meta.url).href)};
+    const app = new App();
+    app.user = await tc.me(); app.tags = await tc.loadTags(); app.setTasks(await tc.loadTasks());
+    const ws = new WeekScreen(app, "2026-10-19");
+    app.push(ws);
+    await ws.load();
+    const key = (str, name = str) => ws.onKey(str, { name });
+    let snap;
+    const type = async (v) => { for (const c of v) await key(c); await key("\\r", "return"); };
+    ${script}
+    process.stderr.write("RESULT" + JSON.stringify({ status: app.status, groups: (snap || ws.groups()).map((g) => [g.task_id, Object.fromEntries(Object.entries(g.cells).map(([d, es]) => [d, es.map((e) => e.duration)]))]), gc: ws.gc, from: ws.from }));
+  `;
+  const env = { ...process.env, TIMECAMP_BASE_URL: baseUrl, TIMECAMP_API_TOKEN: "test-token", TIMECAMP_API_TOKEN_FILE: "/nonexistent", TIMECAMP_CACHE_DIR: mkdtempSync(join(tmpdir(), "tc-cache-")), TIMECAMP_CONFIG: CONFIG };
+  const { stderr } = await run(process.execPath, ["--input-type=module", "-e", code], { env });
+  return JSON.parse(stderr.slice(stderr.lastIndexOf("RESULT") + 6));
+}
+
+test("grid: groups entries by task, types hours into cells, fills Mon-Fri, clears, and crosses weeks with h/l", async () => {
+  reset(); // one 1h entry for task 11 on Mon 2026-10-19
+  const r = await grid(`
+    ws.gr = 0; ws.gc = 1; await type("8");          // Tue: create 8h
+    ws.gc = 0; await type("7.5");                    // Mon: resize the 1h entry to 7.5h
+    await ws.fillRow();                              // Wed-Fri: fill only the empty weekdays
+    ws.gc = 4; await key("d");                       // clear Fri
+    snap = ws.groups();
+    ws.gc = 0; await key("h");                       // h on Monday: previous week's Sunday
+  `);
+  assert.deepEqual(r.groups, [[11, { "2026-10-19": [3600], "2026-10-20": [28800], "2026-10-21": [28800], "2026-10-22": [28800] }]]);
+  assert.equal(r.from, "2026-10-12");
+  assert.equal(r.gc, 6);
+  const put = requests.find((q) => q.method === "PUT" && q.path.endsWith("/entries")); // the fake API ignores PUT, so check the request
+  assert.equal(put.body.duration, 27000);
+  assert.equal(entries.filter((e) => e.date === "2026-10-23").length, 0);
+});
+
+test("grid: refuses to edit a cell with several entries", async () => {
+  reset();
+  entries.push({ ...entries[0], id: 2, start_time: "10:00:00", end_time: "11:00:00" });
+  const r = await grid(`ws.gr = 0; ws.gc = 0; await type("8");`);
+  assert.match(r.status, /Several entries/);
+  assert.deepEqual(r.groups[0][1]["2026-10-19"], [3600, 3600]);
+});
+
+test("grid: refuses to resize into a neighbouring entry or to add a day that does not fit", async () => {
+  reset(); // task 11, Mon 09:00-10:00 (1h)
+  entries.push({ ...entries[0], id: 2, task_id: 12, start_time: "10:00:00", end_time: "18:00:00" });
+  const before = requests.length;
+  const r = await grid(`ws.gr = 0; ws.gc = 0; await type("8");`);
+  assert.match(r.status, /overlap/i);
+  assert.equal(requests.slice(before).filter((q) => q.method !== "GET").length, 0);
+});
+
+test("grid: a row stays after its last cell is cleared", async () => {
+  reset();
+  const r = await grid(`ws.gr = 0; ws.gc = 0; await key("d");`);
+  assert.deepEqual(r.groups.map((g) => g[0]), [11]);
+});
+
+test("grid: a submitted week is labelled, hides empty carried-over rows and refuses edits", async () => {
+  for (const [status, label] of [[2, "SUBMITTED \\(pending approval\\)"], [1, "APPROVED"], [0, null], [3, null], ["fail", "approval unknown"]]) {
+    reset();
+    approval = status;
+    entries.push({ ...entries[0], id: 2, task_id: "12", date: "2026-10-12" }); // last week's other task: carried over only on open weeks
+    const r = await grid(`await ws.fetchWeek("2026-10-12"); await ws.load(); ws.gr = 0; ws.gc = 1; await type("8"); app.status += "|" + JSON.stringify(ws.header(120));`);
+    const open = !(status === 1 || status === 2);
+    assert.equal(label ? new RegExp(label).test(r.status) : /SUBMITTED|APPROVED|unknown/.test(r.status), !!label, r.status);
+    assert.equal(r.groups.length, open ? 2 : 1, `status ${status}`);
+    assert.equal(/Several|submitted/.test(r.status), !open, r.status);
+    assert.equal(entries.filter((e) => e.date === "2026-10-20").length, open ? 1 : 0);
+  }
 });
