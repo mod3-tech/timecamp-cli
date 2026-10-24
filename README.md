@@ -156,6 +156,10 @@ The full task list is cached for 24h in `~/.cache/timecamp/`. Pass
 `npm test` runs the CLI against a local mock of the TimeCamp API. You don't
 need a token or network access.
 
+To run the tests before every commit, enable the bundled hook once per clone:
+`git config core.hooksPath .githooks`. Skip it for one commit with
+`git commit --no-verify`.
+
 The code is split into `lib/core.mjs` (API client and entry logic), `bin/timecamp.mjs`
 (CLI), `lib/tui.mjs` (TUI), `lib/mouse.mjs` (mouse parsing, click-vs-drag
 detection, text selection) and `lib/skills.mjs` (installing the bundled skill).
