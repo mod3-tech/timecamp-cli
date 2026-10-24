@@ -32,7 +32,7 @@ Interactive:
   tui [--week D] [--no-mouse]          Full-screen week editor (press ? inside for keys)
 
 Skills:
-  skills install [--claude|--opencode] [--global] [--force] [--link] [--dry-run]
+  skills install [--claude|--opencode|--pi] [--global] [--force] [--link] [--dry-run]
                                        Install the bundled agent skill into .claude/skills or
                                        .opencode/skills (--global: ~/.claude/skills or
                                        ~/.config/opencode/skills)
@@ -69,7 +69,7 @@ Config: ${CONFIG_FILE} (CAPEX/OPEX tag lists, day start/length)
 
 // ---------- arg parsing ----------
 
-const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse", "force", "claude", "opencode", "global", "link"]);
+const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse", "force", "claude", "opencode", "pi", "global", "link"]);
 
 function looksLikeDate(s) {
   return /^(\d{4}-\d{2}-\d{2}|today|yesterday|tomorrow|[+-]\d+)$/.test(s);
@@ -166,10 +166,10 @@ async function readHidden(prompt) {
 const commands = {
   async skills(pos, opts) {
     const sub = pos[0] || "install";
-    if (sub !== "install") die("Usage: timecamp skills install [--claude|--opencode] [--global] [--force] [--link] [--dry-run]");
+    if (sub !== "install") die("Usage: timecamp skills install [--claude|--opencode|--pi] [--global] [--force] [--link] [--dry-run]");
     if (!bundledSkills().length) die(`No bundled skills found in ${SKILLS_SOURCE}.`);
 
-    const targets = resolveTargets({ cwd: process.cwd(), home: homedir(), claude: opts.claude, opencode: opts.opencode, global: opts.global });
+    const targets = resolveTargets({ cwd: process.cwd(), home: homedir(), claude: opts.claude, opencode: opts.opencode, pi: opts.pi, global: opts.global });
     if (opts.claude && opts.opencode && !targets.length) die("Nothing to install into.");
     const results = installSkills({ targets, force: opts.force, link: opts.link, dryRun: opts["dry-run"] });
     const conflicts = results.filter((r) => r.status === "conflict");

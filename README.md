@@ -70,6 +70,7 @@ Doing it by hand is also fine:
 ```bash
 timecamp skills install              # this project: .claude/skills/timecamp
 timecamp skills install --opencode   # ... or .opencode/skills/timecamp
+timecamp skills install --pi         # ... or .pi/skills/timecamp (--global: ~/.pi/agent/skills)
 timecamp skills install --global     # every project: ~/.claude/skills (or ~/.config/opencode/skills)
 ```
 
@@ -79,7 +80,8 @@ OpenCode) when a `.claude` directory exists, `.opencode/skills` when only
 `--opencode` choose explicitly; passing both installs twice, which is opt-in
 because agents expect skill names to be unique across locations. `--global`
 applies the same rules to `~/.claude` and `~/.config/opencode` instead of the
-current directory.
+current directory. Pi doesn't read `.claude/skills`, so it's never picked
+automatically: pass `--pi`.
 
 The skill is copied, so a project commit carries it and other machines don't
 need this tool; re-run the command after upgrading to refresh it. `--link`

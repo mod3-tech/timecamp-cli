@@ -405,4 +405,11 @@ test("skills install --dry-run, --link and --global", async () => {
   r = await cli(["skills", "install", "--global", "--opencode"], { cwd, home });
   assert.equal(r.code, 0, r.stderr);
   assert.ok(existsSync(join(home, ".config/opencode/skills/timecamp/SKILL.md")));
+
+  r = await cli(["skills", "install", "--pi"], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(cwd, ".pi/skills/timecamp/SKILL.md")));
+  r = await cli(["skills", "install", "--global", "--pi"], { cwd, home });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(home, ".pi/agent/skills/timecamp/SKILL.md")));
 });

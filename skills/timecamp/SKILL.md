@@ -47,7 +47,7 @@ review or tweak a week by hand.
 |---|---|
 | `login` / `logout` | **User-only.** Save (after verifying) or remove the API token. |
 | `setup` | **User-only.** First-run setup: login + CAPEX/OPEX config. Safe to re-run. |
-| `skills install` | **User-only.** Copy the skill into `./.claude/skills` or `./.opencode/skills` (or `--global`). |
+| `skills install` | **User-only.** Copy the skill into `./.claude/skills`, `./.opencode/skills` or `./.pi/skills` (or `--global`). |
 | `me` | Who the token belongs to. |
 | `tasks [--search TEXT] [--archived]` | Projects and tasks you can track to, as `id` + full path (`Client / Project / Task`). |
 | `tags [--search TEXT]` | Tag ids, grouped by tag list. |
