@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { writeFileSync, mkdtempSync, mkdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync, readFileSync, existsSync, statSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -86,7 +86,7 @@ before(async () => {
 
 after(() => server.close());
 
-async function cli(args, { input, token = "test-token", config = CONFIG, tokenFile = "/nonexistent" } = {}) {
+async function cli(args, { input, token = "test-token", config = CONFIG, tokenFile = "/nonexistent", cwd, home } = {}) {
   const env = {
     ...process.env, TIMECAMP_BASE_URL: baseUrl, TIMECAMP_API_TOKEN_TOKEN_PLACEHOLDER: "",
     TIMECAMP_API_TOKEN_FILE: tokenFile,
@@ -94,9 +94,10 @@ async function cli(args, { input, token = "test-token", config = CONFIG, tokenFi
   };
   delete env.TIMECAMP_API_TOKEN_TOKEN_PLACEHOLDER;
   delete env.TIMECAMP_API_TOKEN;
+  if (home) env.HOME = home;
   if (token !== null) env.TIMECAMP_API_TOKEN = token;
   try {
-    const p = run(process.execPath, [CLI, ...args], { env });
+    const p = run(process.execPath, [CLI, ...args], { env, ...(cwd ? { cwd } : {}) });
     if (input !== undefined) { p.child.stdin.end(input); }
     const { stdout, stderr } = await p;
     return { code: 0, stdout, stderr };
@@ -269,7 +270,7 @@ test("setup derives CAPEX/OPEX tag lists from list names and writes the config",
   assert.match(r.stdout, /Logged in as Me <me@example.com>/);
   assert.match(r.stdout, new RegExp(config.replace(/[.^$*+?()[\]{}|\\]/g, "\\$&")));
   assert.match(r.stdout, /Not classified: .*Marketing \(999\)/);
-  assert.match(r.stdout, /ln -s .*skills\/timecamp/);
+  assert.match(r.stdout, /timecamp skills install/);
 
   const cfg = JSON.parse(readFileSync(config, "utf8"));
   assert.deepEqual(cfg.classification, { capex: [54149, 54150, 54156, 54157], opex: [54158, 54159, 54842] });
@@ -312,4 +313,78 @@ test("setup fails clearly without a usable token when it can't prompt", async ()
   r = await cli(["setup"], { config: freshConfig(), token: "bad" });
   assert.equal(r.code, 1);
   assert.match(r.stderr, /TIMECAMP_API_TOKEN is set but rejected/);
+});
+
+// ---------- timecamp skills install ----------
+
+const skillSource = () => readFileSync(new URL("../skills/timecamp/SKILL.md", import.meta.url), "utf8");
+
+test("skills install detects the agent dir, copies the skill, and is idempotent", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  mkdirSync(join(cwd, ".claude"));
+  let r = await cli(["skills", "install"], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /installed timecamp → \.claude\/skills\/timecamp/);
+  assert.equal(readFileSync(join(cwd, ".claude/skills/timecamp/SKILL.md"), "utf8"), skillSource());
+  assert.ok(!existsSync(join(cwd, ".opencode")), "the other agent dir isn't touched");
+
+  r = await cli(["skills", "install"], { cwd });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /already up to date/);
+});
+
+test("skills install targets both agents when both exist, or the chosen one", async () => {
+  const both = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  mkdirSync(join(both, ".claude")); mkdirSync(join(both, ".opencode"));
+  let r = await cli(["skills", "install"], { cwd: both });
+  assert.match(r.stdout, /\.claude\/skills\/timecamp/);
+  assert.match(r.stdout, /\.opencode\/skills\/timecamp/);
+  assert.ok(existsSync(join(both, ".opencode/skills/timecamp/SKILL.md")));
+
+  const empty = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  r = await cli(["skills", "install", "--opencode"], { cwd: empty });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(empty, ".opencode/skills/timecamp/SKILL.md")));
+  assert.ok(!existsSync(join(empty, ".claude")));
+});
+
+test("skills install defaults to .claude/skills and says so", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  const r = await cli(["skills", "install"], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(cwd, ".claude/skills/timecamp/SKILL.md")));
+  assert.match(r.stdout, /No \.claude or \.opencode directory here/);
+  assert.match(r.stdout, /Start a new agent session/);
+});
+
+test("skills install refuses to clobber a modified skill unless --force", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  mkdirSync(join(cwd, ".claude"));
+  await cli(["skills", "install"], { cwd });
+  writeFileSync(join(cwd, ".claude/skills/timecamp/SKILL.md"), "edited\n");
+  let r = await cli(["skills", "install"], { cwd });
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /exists and differs/);
+  assert.match(r.stderr, /--force/);
+  assert.equal(readFileSync(join(cwd, ".claude/skills/timecamp/SKILL.md"), "utf8"), "edited\n");
+
+  r = await cli(["skills", "install", "--force"], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(readFileSync(join(cwd, ".claude/skills/timecamp/SKILL.md"), "utf8"), skillSource());
+});
+
+test("skills install --dry-run, --link and --global", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  let r = await cli(["skills", "install", "--dry-run"], { cwd });
+  assert.match(r.stdout, /would install/);
+  assert.ok(!existsSync(join(cwd, ".claude")));
+
+  r = await cli(["skills", "install", "--link"], { cwd });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(lstatSync(join(cwd, ".claude/skills/timecamp")).isSymbolicLink());
+
+  const home = mkdtempSync(join(tmpdir(), "tc-home-"));
+  r = await cli(["skills", "install", "--global", "--opencode"], { cwd, home });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(home, ".config/opencode/skills/timecamp/SKILL.md")));
 });

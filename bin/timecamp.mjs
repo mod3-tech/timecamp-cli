@@ -3,8 +3,8 @@
 // Zero dependencies; requires Node 18+ (global fetch). Run `timecamp help` for usage.
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { resolveTargets, installSkills, bundledSkills, SKILLS_SOURCE } from "../lib/skills.mjs";
 import {
   CliError, die, TOKEN_FILE, CONFIG_FILE, dateObj, fmtDate, resolveRange, fmtDuration, hours, toList,
   api, me, setToken, saveToken, removeToken, hasToken, loadTasks, resolveTask, loadTags, fetchEntries, buildEntryPayload, createEntry, updateEntry,
@@ -17,7 +17,6 @@ import {
 const C_OK = "32";
 const C_WARN = "33";
 const C_DIM = "90";
-const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "skills", "timecamp");
 
 const HELP = `timecamp — TimeCamp time-entry CLI
 
@@ -31,6 +30,12 @@ Auth:
 
 Interactive:
   tui [--week D] [--no-mouse]          Full-screen week editor (press ? inside for keys)
+
+Skills:
+  skills install [--claude|--opencode] [--global] [--force] [--link] [--dry-run]
+                                       Install the bundled agent skill into .claude/skills or
+                                       .opencode/skills (--global: ~/.claude/skills or
+                                       ~/.config/opencode/skills)
 
 Read:
   me                                   Show the authenticated user
@@ -64,7 +69,7 @@ Config: ${CONFIG_FILE} (CAPEX/OPEX tag lists, day start/length)
 
 // ---------- arg parsing ----------
 
-const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse", "force"]);
+const BOOL_FLAGS = new Set(["json", "dry-run", "yes", "archived", "billable", "no-billable", "allow-duplicate", "week", "month", "help", "refresh", "no-mouse", "force", "claude", "opencode", "global", "link"]);
 
 function looksLikeDate(s) {
   return /^(\d{4}-\d{2}-\d{2}|today|yesterday|tomorrow|[+-]\d+)$/.test(s);
@@ -149,6 +154,41 @@ async function readHidden(prompt) {
 // ---------- commands ----------
 
 const commands = {
+  async skills(pos, opts) {
+    const sub = pos[0] || "install";
+    if (sub !== "install") die("Usage: timecamp skills install [--claude|--opencode] [--global] [--force] [--link] [--dry-run]");
+    if (!bundledSkills().length) die(`No bundled skills found in ${SKILLS_SOURCE}.`);
+
+    const targets = resolveTargets({ cwd: process.cwd(), home: homedir(), claude: opts.claude, opencode: opts.opencode, global: opts.global });
+    if (opts.claude && opts.opencode && !targets.length) die("Nothing to install into.");
+    const results = installSkills({ targets, force: opts.force, link: opts.link, dryRun: opts["dry-run"] });
+    const conflicts = results.filter((r) => r.status === "conflict");
+
+    if (opts.json) {
+      print({ targets: targets.map((t) => ({ agent: t.agent, dir: t.dir })), results });
+      if (conflicts.length) process.exitCode = 1;
+      return;
+    }
+
+    for (const r of results) {
+      const where = r.display;
+      if (r.status === "installed") console.log(`✓ installed ${r.skill} → ${where}${opts.link ? " (symlink)" : ""}`);
+      else if (r.status === "up-to-date") console.log(`· ${r.skill} already up to date in ${where}`);
+      else if (r.status === "would-install") console.log(`would install ${r.skill} → ${where}`);
+      else console.log(`✗ ${where} exists and differs from the bundled skill`);
+    }
+    if (targets.some((t) => t.defaulted)) {
+      console.log(`\nNo .claude or .opencode directory here, so it went to the default (read by both Claude Code and OpenCode).`);
+      console.log("Use --opencode for .opencode/skills, or --global for your home directory.");
+    }
+    if (conflicts.length) {
+      console.error("\nRe-run with --force to replace it (your version will be overwritten).");
+      process.exitCode = 1;
+      return;
+    }
+    if (!opts["dry-run"] && results.some((r) => r.status === "installed")) console.log("\nStart a new agent session to pick up the skill.");
+  },
+
   async setup(_pos, opts) {
     const log = (mark, msg, style = "") => { if (!opts.json) console.log(`${mark} ${style ? `\x1b[${style}m${msg}\x1b[0m` : msg}`); };
     const result = { user: null, configFile: CONFIG_FILE, classification: null, unclassified: [], wroteConfig: false };
@@ -207,9 +247,9 @@ const commands = {
 
     if (opts.json) return print(result);
     console.log("\nNext:");
-    console.log(`  agent skill (once):  ln -s ${SKILL_DIR} ~/.claude/skills/timecamp`);
-    console.log("  try it:              timecamp tui");
-    console.log("  checks:              timecamp me && timecamp summary --week");
+    console.log("  install the agent skill:  timecamp skills install");
+    console.log("  try it:                   timecamp tui");
+    console.log("  checks:                   timecamp me && timecamp summary --week");
   },
 
   async login(pos, opts) {

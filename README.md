@@ -68,8 +68,18 @@ Doing it by hand is also fine:
 ### Install the skill
 
 ```bash
-ln -s "$PWD/skills/timecamp" ~/.claude/skills/timecamp
+timecamp skills install              # .claude/skills/ or .opencode/skills/ in this project
+timecamp skills install --opencode   # force .opencode/skills/
+timecamp skills install --global     # ~/.claude/skills/ or ~/.config/opencode/skills/
 ```
+
+It installs into whichever of `.claude` and `.opencode` already exist in the
+current directory (both, if both do), and falls back to `.claude/skills` —
+read by both Claude Code and OpenCode — when there's neither. The skill is
+copied, so a project commit carries it and other machines don't need this
+tool; re-run the command after upgrading to refresh it. `--link` symlinks
+instead (handy while developing the skill), `--force` replaces a locally
+modified copy, and `--dry-run` shows what would happen.
 
 ## TUI
 
@@ -136,8 +146,8 @@ The full task list is cached for 24h in `~/.cache/timecamp/`. Pass
 need a token or network access.
 
 The code is split into `lib/core.mjs` (API client and entry logic), `bin/timecamp.mjs`
-(CLI), `lib/tui.mjs` (TUI) and `lib/mouse.mjs` (mouse parsing, click-vs-drag
-detection, text selection).
+(CLI), `lib/tui.mjs` (TUI), `lib/mouse.mjs` (mouse parsing, click-vs-drag
+detection, text selection) and `lib/skills.mjs` (installing the bundled skill).
 
 Environment overrides: `TIMECAMP_BASE_URL`, `TIMECAMP_API_TOKEN_FILE`,
 `TIMECAMP_CONFIG`, `TIMECAMP_CACHE_DIR`.
