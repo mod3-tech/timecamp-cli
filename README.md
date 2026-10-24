@@ -25,6 +25,10 @@ updates it. Only re-install if `package.json` changes (`bin`, name); code
 changes need nothing. `npm link` does the same thing without recording a
 global install. To remove it: `npm uninstall -g timecamp-cli`.
 
+The command runs on [Bun](https://bun.sh) when it's installed (faster
+startup) and falls back to Node otherwise. It needs a POSIX shell, so on
+Windows use WSL or Git Bash.
+
 Install straight from git instead, without keeping a clone:
 
 ```bash

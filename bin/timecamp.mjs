@@ -1,4 +1,6 @@
-#!/usr/bin/env node
+#!/bin/sh
+':' //; exec "$(command -v bun || command -v node)" "$0" "$@"
+// ^ sh runs this with bun if installed, else node; JS sees a no-op string and a comment.
 // TimeCamp CLI — manage your own time entries on app.timecamp.com from the shell.
 // Zero dependencies; requires Node 18+ (global fetch). Run `timecamp help` for usage.
 
