@@ -416,15 +416,25 @@ const commands = {
     const existing = opts["allow-duplicate"] ? [] : await fetchEntries({ from: dates[0], to: dates[dates.length - 1] });
 
     const results = [];
-    for (const { body, tags } of built) {
-      const r = await createEntry(body, tags, { dryRun: opts["dry-run"], allowDuplicate: opts["allow-duplicate"], existing });
+    let failure;
+    for (const [i, { body, tags }] of built.entries()) {
+      let r;
+      try {
+        r = await createEntry(body, tags, { dryRun: opts["dry-run"], allowDuplicate: opts["allow-duplicate"], existing });
+      } catch (e) {
+        // stop, but still report what was already written
+        failure = `Entry #${i + 1} failed, ${built.length - i - 1} not attempted: ${e.message}`;
+        break;
+      }
       if (!opts["allow-duplicate"] && !r.skipped) {
         // so later items in the same batch are checked against earlier ones
         existing.push({ date: body.date, start: body.start?.slice(11, 16) ?? "", end: body.end?.slice(11, 16) ?? "", duration: body.duration, task_id: body.task_id ?? null, note: body.description ?? "", id: r.id ?? "(pending)", task: "" });
       }
       results.push(r);
     }
-    if (opts.json) return print(results);
+    if (failure) process.exitCode = 1;
+    const report = () => failure && console.error(`error: ${failure}${opts["allow-duplicate"] ? "" : "\nRe-running is safe: entries already created are skipped as duplicates."}`);
+    if (opts.json) { print(results); return report(); }
     for (const r of results) {
       if (r.skipped) console.log(`SKIP     ${r.entry.date} ${fmtDuration(r.entry.duration)} — ${r.reason}`);
       else if (r.dryRun) console.log(`DRY-RUN  ${JSON.stringify(r.request.body)}`);
@@ -432,6 +442,7 @@ const commands = {
     }
     const n = (k) => results.filter((r) => r[k]).length;
     console.log(`\n${n("created")} created, ${n("skipped")} skipped${opts["dry-run"] ? `, ${n("dryRun")} would be created` : ""}`);
+    report();
   },
 
   async timer(pos, opts) {

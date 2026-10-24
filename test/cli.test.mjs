@@ -14,7 +14,7 @@ const CLI = fileURLToPath(new URL("../bin/timecamp.mjs", import.meta.url));
 const CONFIG = join(mkdtempSync(join(tmpdir(), "tc-config-")), "config.json");
 writeFileSync(CONFIG, JSON.stringify({ classification: { capex: [3], opex: [4] } }));
 
-let server, baseUrl, requests, entries, nextId;
+let server, baseUrl, requests, entries, nextId, flaky = 0;
 
 function reset() {
   requests = [];
@@ -45,6 +45,7 @@ before(async () => {
     if (req.headers.authorization !== "Bearer test-token") return send(401, { message: "bad token" });
     const p = url.pathname.replace(/^\/api/, "");
     if (p === "/me") return send(200, { user_id: "7", email: "me@example.com", display_name: "Me", root_group_id: "1" });
+    if (p === "/tasks" && flaky > 0) { flaky--; res.writeHead(503, { "retry-after": "0.01" }); return res.end("busy"); }
     if (p === "/tasks") return send(200, tasks);
     if (p === "/tag_list") return send(200, {
       3: { id: "3", name: "Type", archived: "0", tags: { 21: { id: "21", name: "Meeting", archived: "0" } } },
@@ -62,6 +63,7 @@ before(async () => {
       return send(200, entries.filter((e) => e.date >= from && e.date <= to));
     }
     if (p === "/entries" && req.method === "POST") {
+      if (body.description === "boom") return send(503, { message: "server busy" });
       const id = nextId++;
       entries.push({ id, duration: String(body.duration), task_id: String(body.task_id || 0), date: body.date, start_time: body.start?.slice(11) || "00:00:00", end_time: body.end?.slice(11) || "00:00:00", name: tasks[body.task_id]?.name || "", description: body.description || "", billable: 0, locked: "0", tags: [] });
       return send(200, { entry_id: id });
@@ -165,6 +167,35 @@ test("bulk validates first, creates, and is idempotent on re-run", async () => {
   const bad = await cli(["bulk", "-"], { input: JSON.stringify([{ date: "2026-10-22", duration: "1h" }, { date: "2026-10-22" }]) });
   assert.equal(bad.code, 1);
   assert.match(bad.stderr, /Entry #2/);
+});
+
+test("bulk reports entries created before a mid-batch failure", async () => {
+  reset();
+  const input = JSON.stringify([
+    { date: "2026-10-20", duration: "1h", task: 11, note: "a" },
+    { date: "2026-10-20", duration: "1h", task: 12, note: "boom" },
+    { date: "2026-10-21", duration: "1h", task: 12, note: "c" },
+  ]);
+  const r = await cli(["bulk", "-", "--json"], { input });
+  assert.equal(r.code, 1);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.length, 1);
+  assert.ok(out[0].created);
+  assert.match(r.stderr, /Entry #2 failed, 1 not attempted: .*503/);
+  assert.equal(requests.filter((q) => q.method === "POST").length, 2);
+});
+
+test("GETs retry on 503, writes do not", async () => {
+  reset();
+  flaky = 2;
+  const r = await cli(["tasks", "--json"]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /TimeCamp returned 503; retrying/);
+  assert.equal(requests.filter((q) => q.path.endsWith("/tasks")).length, 3);
+
+  const w = await cli(["add", "--date", "2026-10-20", "--duration", "1h", "--task", "11", "--note", "boom"]);
+  assert.equal(w.code, 1);
+  assert.equal(requests.filter((q) => q.method === "POST").length, 1);
 });
 
 test("summary totals and week range (Mon-Sun)", async () => {
