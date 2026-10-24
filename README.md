@@ -68,18 +68,23 @@ Doing it by hand is also fine:
 ### Install the skill
 
 ```bash
-timecamp skills install              # .claude/skills/ or .opencode/skills/ in this project
-timecamp skills install --opencode   # force .opencode/skills/
-timecamp skills install --global     # ~/.claude/skills/ or ~/.config/opencode/skills/
+timecamp skills install              # this project: .claude/skills/timecamp
+timecamp skills install --opencode   # ... or .opencode/skills/timecamp
+timecamp skills install --global     # every project: ~/.claude/skills (or ~/.config/opencode/skills)
 ```
 
-It installs into whichever of `.claude` and `.opencode` already exist in the
-current directory (both, if both do), and falls back to `.claude/skills` —
-read by both Claude Code and OpenCode — when there's neither. The skill is
-copied, so a project commit carries it and other machines don't need this
-tool; re-run the command after upgrading to refresh it. `--link` symlinks
-instead (handy while developing the skill), `--force` replaces a locally
-modified copy, and `--dry-run` shows what would happen.
+With no agent flag it uses `.claude/skills` (read by both Claude Code and
+OpenCode) when a `.claude` directory exists, `.opencode/skills` when only
+`.opencode` exists, and `.claude/skills` when there's neither. `--claude` and
+`--opencode` choose explicitly; passing both installs twice, which is opt-in
+because agents expect skill names to be unique across locations. `--global`
+applies the same rules to `~/.claude` and `~/.config/opencode` instead of the
+current directory.
+
+The skill is copied, so a project commit carries it and other machines don't
+need this tool; re-run the command after upgrading to refresh it. `--link`
+symlinks instead (handy while developing the skill), `--force` replaces a
+locally modified copy, and `--dry-run` shows what would happen.
 
 ## TUI
 

@@ -119,6 +119,16 @@ function specFromOpts(opts) {
   return spec;
 }
 
+/** Shorten a path for display: ~/… inside the home directory, relative to cwd otherwise. */
+function displayPath(p) {
+  const home = homedir();
+  if (p === home) return "~";
+  if (p.startsWith(`${home}/`)) return `~${p.slice(home.length)}`;
+  const cwd = process.cwd();
+  if (p.startsWith(`${cwd}/`)) return p.slice(cwd.length + 1);
+  return p;
+}
+
 const shortClass = (c) => ({ CAPEX: "CAPEX", OPEX: "OPEX", MIXED: "MIXED", UNTAGGED: "no-tag", UNKNOWN: "?" })[c] ?? "";
 
 async function readHidden(prompt) {
@@ -171,16 +181,13 @@ const commands = {
     }
 
     for (const r of results) {
-      const where = r.display;
+      const where = displayPath(r.dir);
       if (r.status === "installed") console.log(`✓ installed ${r.skill} → ${where}${opts.link ? " (symlink)" : ""}`);
       else if (r.status === "up-to-date") console.log(`· ${r.skill} already up to date in ${where}`);
       else if (r.status === "would-install") console.log(`would install ${r.skill} → ${where}`);
       else console.log(`✗ ${where} exists and differs from the bundled skill`);
     }
-    if (targets.some((t) => t.defaulted)) {
-      console.log(`\nNo .claude or .opencode directory here, so it went to the default (read by both Claude Code and OpenCode).`);
-      console.log("Use --opencode for .opencode/skills, or --global for your home directory.");
-    }
+    for (const note of new Set(targets.map((t) => t.note).filter(Boolean))) console.log(`\n${note}`);
     if (conflicts.length) {
       console.error("\nRe-run with --force to replace it (your version will be overwritten).");
       process.exitCode = 1;
@@ -247,7 +254,7 @@ const commands = {
 
     if (opts.json) return print(result);
     console.log("\nNext:");
-    console.log("  install the agent skill:  timecamp skills install");
+    console.log("  install the agent skill:  timecamp skills install --global");
     console.log("  try it:                   timecamp tui");
     console.log("  checks:                   timecamp me && timecamp summary --week");
   },

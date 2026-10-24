@@ -333,19 +333,37 @@ test("skills install detects the agent dir, copies the skill, and is idempotent"
   assert.match(r.stdout, /already up to date/);
 });
 
-test("skills install targets both agents when both exist, or the chosen one", async () => {
+test("skills install picks one target by default, and both only when asked", async () => {
+  // Both dirs present: prefer the Claude-compatible path and explain why (no duplicate skill names).
   const both = mkdtempSync(join(tmpdir(), "tc-skills-"));
   mkdirSync(join(both, ".claude")); mkdirSync(join(both, ".opencode"));
   let r = await cli(["skills", "install"], { cwd: both });
-  assert.match(r.stdout, /\.claude\/skills\/timecamp/);
-  assert.match(r.stdout, /\.opencode\/skills\/timecamp/);
-  assert.ok(existsSync(join(both, ".opencode/skills/timecamp/SKILL.md")));
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(both, ".claude/skills/timecamp/SKILL.md")));
+  assert.ok(!existsSync(join(both, ".opencode/skills")), "no duplicate by default");
+  assert.match(r.stdout, /Both \.claude and \.opencode exist/);
 
+  // Only .opencode present: use it.
+  const ocOnly = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  mkdirSync(join(ocOnly, ".opencode"));
+  r = await cli(["skills", "install"], { cwd: ocOnly });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(ocOnly, ".opencode/skills/timecamp/SKILL.md")));
+  assert.ok(!existsSync(join(ocOnly, ".claude")));
+
+  // Explicit agent, even with no dir there yet.
   const empty = mkdtempSync(join(tmpdir(), "tc-skills-"));
   r = await cli(["skills", "install", "--opencode"], { cwd: empty });
   assert.equal(r.code, 0, r.stderr);
   assert.ok(existsSync(join(empty, ".opencode/skills/timecamp/SKILL.md")));
   assert.ok(!existsSync(join(empty, ".claude")));
+
+  // Both flags install into both.
+  const two = mkdtempSync(join(tmpdir(), "tc-skills-"));
+  r = await cli(["skills", "install", "--claude", "--opencode"], { cwd: two });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(existsSync(join(two, ".claude/skills/timecamp/SKILL.md")));
+  assert.ok(existsSync(join(two, ".opencode/skills/timecamp/SKILL.md")));
 });
 
 test("skills install defaults to .claude/skills and says so", async () => {
