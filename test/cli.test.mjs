@@ -82,6 +82,7 @@ before(async () => {
       return send(200, ids);
     }
     if (p === "/approval" && approval === "fail") return send(403, { message: "no" });
+    if (p === "/approval" && req.method === "POST") { approval = body.status; return send(200, { approval_id: "55" }); }
     if (p === "/approval") return send(200, [{ for: "7", from: "2026-10-19", status: String(approval) }, { for: "8", from: "2026-10-19", status: "1" }]);
     if (p === "/timer_running") return send(200, []);
     send(404, { message: "not found" });
@@ -523,4 +524,13 @@ test("grid: a submitted week is labelled, hides empty carried-over rows and refu
     assert.equal(/Several|submitted/.test(r.status), !open, r.status);
     assert.equal(entries.filter((e) => e.date === "2026-10-20").length, open ? 1 : 0);
   }
+});
+
+test("grid: s asks, then submits the week with POST /approval", async () => {
+  reset();
+  const r = await grid(`await ws.fetchWeek("2026-10-19"); await ws.load(); await key("s"); if (!/Submit week of/.test(ws.confirm.prompt)) throw new Error("no prompt"); await key("y"); app.status += "|" + ws.submitted();`);
+  const post = requests.find((q) => q.method === "POST" && q.path.endsWith("/approval"));
+  assert.ok(post, "no POST");
+  assert.deepEqual([post.body.status, post.body.from, post.body.to], [2, "2026-10-19", "2026-10-25"]);
+  assert.match(r.status, /true$/);
 });

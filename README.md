@@ -117,7 +117,7 @@ short or empty, and every entry with its CAPEX/OPEX class, epic, tags and note.
 
 In the form, Enter on **Epic** opens a search over all tasks (epics are listed
 before stories), and Enter on **Tags** opens a multi-select labelled CAPEX or
-OPEX. Ctrl-S saves. The TUI never submits a timesheet for approval.
+OPEX. Ctrl-S saves. `s` submits the week for approval, after a confirmation. The CLI and the agent skill never submit.
 
 ### Mouse
 
